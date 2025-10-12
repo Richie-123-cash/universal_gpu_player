@@ -13,7 +13,30 @@ No heavy setups, no daemons, no unnecessary bloat. Perfect for users who want fu
 - Lightweight and portable — minimal dependencies  
 - Ideal for developers, power users, and efficiency enthusiasts  
 
-## Usage
+## Installation
+
+1. **Install system MPV**  
+MPV is a system program and must be installed separately:
+
+```bash
+# Arch Linux
+sudo pacman -S mpv
+
+# Ubuntu/Debian
+sudo apt install mpv
+
+
+    Install Python dependencies
+
+pip install -r requirements.txt
+
+    requirements.txt includes:
+
+        yt-dlp (downloads videos)
+
+        python-mpv (optional Python wrapper to control MPV)
+
+Usage
 
 Run the script and follow the prompt:
 
@@ -21,11 +44,11 @@ python gpu_video_player.py
 
     Enter the URL of your video.
 
-    The script will automatically detect GPU availability and accelerate playback using mpv and yt-dlp.
+    The script automatically detects GPU availability and accelerates playback using MPV and yt-dlp.
 
 Extracting embedded video URLs (advanced — developer tools)
 
-Some webpages (especially sites with custom or embedded players) hide the actual video stream behind scripts or dynamic requests. Do not copy the URL from the browser address bar — that’s usually just a wrapper page. Instead:
+Some webpages (especially sites with custom or embedded players) hide the actual video stream behind scripts or dynamic requests. Do not copy the page URL from the browser address bar — that’s usually just the wrapper page. Instead:
 
 Example (Chromium / Chrome):
 
@@ -44,11 +67,7 @@ Example (Chromium / Chrome):
 Legal & ethical notice: This method is meant for debugging, personal recordings, or content you have permission to access. Do not use it to bypass paywalls, DRM-protected content, or copyrighted material. Example URLs are purely for demonstration; you are responsible for proper use.
 License
 
-## MIT License
+MIT License
 
     Author: Richie-123-cash
     Version: 0.1.0
-
-## Installation
-```bash
-pip install -r requirements.txt
