@@ -4,7 +4,7 @@ A lightweight framework that manages and optimizes GPU usage for video playback,
 
 ## Why Universal GPU Player?
 
-No heavy setups, no daemons, no unnecessary bloat. Perfect for users who want full GPU acceleration without letting it drain your battery in ten minutes. Works out-of-the-box for standard videos and can handle more complex, embedded streams with a little extra guidance.
+No heavy setups, no daemons, no unnecessary bloat. Perfect for users who want full GPU acceleration without letting it drain their battery in ten minutes. Works out-of-the-box for standard videos and can handle more complex, embedded streams with a little extra guidance.
 
 ## Features
 
@@ -15,26 +15,10 @@ No heavy setups, no daemons, no unnecessary bloat. Perfect for users who want fu
 
 ## Installation
 
-1. **Install system MPV**  
-MPV is a system program and must be installed separately:
+Install dependencies with:
 
 ```bash
-# Arch Linux
-sudo pacman -S mpv
-
-# Ubuntu/Debian
-sudo apt install mpv
-
-
-    Install Python dependencies
-
 pip install -r requirements.txt
-
-    requirements.txt includes:
-
-        yt-dlp (downloads videos)
-
-        python-mpv (optional Python wrapper to control MPV)
 
 Usage
 
@@ -44,11 +28,13 @@ python gpu_video_player.py
 
     Enter the URL of your video.
 
-    The script automatically detects GPU availability and accelerates playback using MPV and yt-dlp.
+    The script will automatically detect GPU availability and accelerate playback using mpv and yt-dlp.
+
+    Once playback finishes, you can simply close MPV and rerun the script for another video.
 
 Extracting embedded video URLs (advanced — developer tools)
 
-Some webpages (especially sites with custom or embedded players) hide the actual video stream behind scripts or dynamic requests. Do not copy the page URL from the browser address bar — that’s usually just the wrapper page. Instead:
+Some webpages (especially sites with custom or embedded players) hide the actual video stream behind scripts or dynamic requests. Do not copy the URL from the browser address bar — that’s usually just the wrapper page. Instead:
 
 Example (Chromium / Chrome):
 
@@ -64,7 +50,7 @@ Example (Chromium / Chrome):
 
     Paste the real stream URL into the script’s prompt — the player will handle playback.
 
-Legal & ethical notice: This method is meant for debugging, personal recordings, or content you have permission to access. Do not use it to bypass paywalls, DRM-protected content, or copyrighted material. Example URLs are purely for demonstration; you are responsible for proper use.
+Important: This method is intended for troubleshooting, personal recordings, or content you have permission to access. Do not use it to bypass paywalls, DRM-protected content, or copyrighted material. Example URLs are purely for demonstration; you are responsible for proper use.
 License
 
 MIT License
