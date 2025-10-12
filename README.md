@@ -19,8 +19,8 @@ Install dependencies with:
 
 ```bash
 pip install -r requirements.txt
-
-Usage
+```
+##Usage
 
 Run the script and follow the prompt:
 
@@ -51,7 +51,8 @@ Example (Chromium / Chrome):
     Paste the real stream URL into the script’s prompt — the player will handle playback.
 
 Important: This method is intended for troubleshooting, personal recordings, or content you have permission to access. Do not use it to bypass paywalls, DRM-protected content, or copyrighted material. Example URLs are purely for demonstration; you are responsible for proper use.
-License
+
+##License
 
 MIT License
 
