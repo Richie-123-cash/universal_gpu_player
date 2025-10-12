@@ -20,17 +20,17 @@ Install dependencies with:
 ```bash
 pip install -r requirements.txt
 ```
-##Usage
+## Usage
 
 Run the script and follow the prompt:
-
+'''bash
 python gpu_video_player.py
+'''
+ Enter the URL of your video.
 
-    Enter the URL of your video.
+ The script will automatically detect GPU availability and accelerate playback using mpv and yt-dlp.
 
-    The script will automatically detect GPU availability and accelerate playback using mpv and yt-dlp.
-
-    Once playback finishes, you can simply close MPV and rerun the script for another video.
+ Once playback finishes, you can simply close MPV and rerun the script for another video.
 
 Extracting embedded video URLs (advanced — developer tools)
 
@@ -52,7 +52,7 @@ Example (Chromium / Chrome):
 
 Important: This method is intended for troubleshooting, personal recordings, or content you have permission to access. Do not use it to bypass paywalls, DRM-protected content, or copyrighted material. Example URLs are purely for demonstration; you are responsible for proper use.
 
-##License
+## License
 
 MIT License
 
