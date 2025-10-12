@@ -13,12 +13,7 @@ No heavy setups, no daemons, no unnecessary bloat. Perfect for users who want fu
 - Lightweight and portable — minimal dependencies  
 - Ideal for developers, power users, and efficiency enthusiasts  
 
-## Installation
-
-```bash
-pip install -r requirements.txt
-
-Usage
+## Usage
 
 Run the script and follow the prompt:
 
@@ -49,7 +44,11 @@ Example (Chromium / Chrome):
 Legal & ethical notice: This method is meant for debugging, personal recordings, or content you have permission to access. Do not use it to bypass paywalls, DRM-protected content, or copyrighted material. Example URLs are purely for demonstration; you are responsible for proper use.
 License
 
-MIT License
+## MIT License
 
     Author: Richie-123-cash
     Version: 0.1.0
+
+## Installation
+```bash
+pip install -r requirements.txt
