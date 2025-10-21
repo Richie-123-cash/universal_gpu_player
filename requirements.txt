@@ -1,3 +1,4 @@
-#suppose that you have the basic system(nvidia drivers, browser...etc) installed
-yt-dlp>=2025.09.26
-python-mpv>=1.5.0
+yt-dlp
+rich
+prompt-toolkit
+colorama
