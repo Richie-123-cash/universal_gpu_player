@@ -2,3 +2,4 @@ yt-dlp
 rich
 prompt-toolkit
 colorama
+playwright==1.58.0
