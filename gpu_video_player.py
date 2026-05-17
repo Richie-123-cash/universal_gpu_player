@@ -295,10 +295,8 @@ def main():
     # Check method
     use_browser = False
     if not is_ytdl_supported(url) and (url.startswith("http://") or url.startswith("https://")):
-        print("URL not supported by yt-dlp (or yt-dlp missing).")
-        choice = input("Attempt to sniff video with headless browser? [Y/n]: ").strip().lower()
-        if choice in ('', 'y', 'yes'):
-            use_browser = True
+        print("URL not supported by yt-dlp — falling back to headless browser sniffing.")
+        use_browser = True
 
     final_target = url
     browser_cookies = ""
