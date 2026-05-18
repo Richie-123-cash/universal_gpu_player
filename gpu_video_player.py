@@ -145,7 +145,7 @@ def _dns_ok(host):
     except socket.gaierror:
         return False
 
-def intercept_video_traffic(url):
+def intercept_video_traffic(url, interactive=False):
     """
     Launch a headless browser, navigate to URL, and find a playable video stream.
 
@@ -165,8 +165,11 @@ def intercept_video_traffic(url):
         print("Error: 'playwright' is not installed. Please install it to use this feature.")
         return None, None, None
 
-    print(f"Launching headless browser to inspect: {url}")
-    print("Please wait while we capture network traffic...")
+    if interactive:
+        print(f"Launching browser (interactive mode): {url}")
+    else:
+        print(f"Launching headless browser to inspect: {url}")
+        print("Please wait while we capture network traffic...")
 
     req_m3u8 = []   # URLs seen via request events (may include unresolvable hosts)
     found_ts = []
@@ -185,7 +188,7 @@ def intercept_video_traffic(url):
         _stealth_available = False
 
     with _pw_ctx_mgr as p:
-        browser = p.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+        browser = p.chromium.launch(headless=not interactive, args=_LAUNCH_ARGS)
         context = browser.new_context(**_CONTEXT_KWARGS)
         if not _stealth_available:
             context.add_init_script(_STEALTH_INIT_JS)
@@ -204,13 +207,29 @@ def intercept_video_traffic(url):
             page.goto(url, wait_until="domcontentloaded", timeout=30000)
             print("Page loaded, scanning for video streams...")
 
-            # Wait for player scripts to initialize (up to 10s).
-            # We always wait at least 5s so window vars are populated before JS extraction,
-            # even if a request event fires early (request fires before DNS resolves).
-            for i in range(10):
-                page.wait_for_timeout(1000)
-                if i >= 4 and req_m3u8:
-                    break
+            # Wait for player scripts to initialize.
+            if interactive:
+                page.wait_for_timeout(3000)  # let page fully render before prompting
+                print()
+                print("=" * 60)
+                print("Browser window is open.")
+                print("Click the episode you want to watch and wait for")
+                print("it to start buffering, then come back here and")
+                print("press Enter to capture that stream.")
+                print("=" * 60)
+                try:
+                    input("Press Enter when ready... ")
+                except EOFError:
+                    pass  # piped stdin — fall through immediately
+                print("Waiting 2 seconds for pending requests to settle...")
+                page.wait_for_timeout(2000)
+            else:
+                # We always wait at least 5s so window vars are populated before JS extraction,
+                # even if a request event fires early (request fires before DNS resolves).
+                for i in range(10):
+                    page.wait_for_timeout(1000)
+                    if i >= 4 and req_m3u8:
+                        break
 
             if not req_m3u8 and found_ts:
                 print(f"Found {len(found_ts)} segments, waiting for more...")
@@ -237,6 +256,19 @@ def intercept_video_traffic(url):
     all_m3u8 = list(dict.fromkeys(
         u.replace("\\/", "/") for u in (js_urls + req_m3u8)
     ))
+
+    if interactive and req_m3u8:
+        # The last m3u8 request = the stream triggered by the user's episode click.
+        # Walk backwards through req_m3u8 to find a resolvable host.
+        print(f"Interactive mode: {len(req_m3u8)} m3u8 request(s) captured, "
+              f"selecting most recent resolvable...")
+        for candidate in reversed(req_m3u8):
+            candidate = candidate.replace("\\/", "/")
+            host = urlparse(candidate).hostname
+            if host and _dns_ok(host):
+                print(f"Using playlist: {candidate}")
+                return candidate, cookie_str, url
+        print("No resolvable m3u8 found in request list; falling back to JS-extracted URLs...")
 
     if all_m3u8:
         print(f"Found {len(all_m3u8)} playlist candidate(s), picking first resolvable...")
@@ -279,6 +311,14 @@ def main():
         "--no-gpu", action="store_true",
         help="Disable GPU rendering and hardware decoding (software render)"
     )
+    parser.add_argument(
+        "--interactive", "-i", action="store_true",
+        help=(
+            "Open a visible browser for episode selection. "
+            "Click the episode you want, wait for it to start buffering, "
+            "then press Enter in this terminal to capture that stream."
+        )
+    )
     args = parser.parse_args()
 
     if not shutil.which("mpv"):
@@ -303,7 +343,9 @@ def main():
     browser_referer = ""
 
     if use_browser:
-        sniffed_target, browser_cookies, browser_referer = intercept_video_traffic(url)
+        sniffed_target, browser_cookies, browser_referer = intercept_video_traffic(
+            url, interactive=args.interactive
+        )
         if sniffed_target:
             final_target = sniffed_target
         else:
