@@ -3,3 +3,4 @@ rich
 prompt-toolkit
 colorama
 playwright==1.58.0
+playwright-stealth==2.0.3

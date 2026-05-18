@@ -137,6 +137,123 @@ _JS_EXTRACT_M3U8 = """
 }
 """
 
+# JS snippet that scrapes the page for candidate episode elements.
+# Uses multiple CSS selector heuristics; deduplicates by label text;
+# ranks by episode-pattern score so genuine episode items float to the top.
+_JS_DISCOVER_EPISODES = """
+() => {
+    // ── helpers ──────────────────────────────────────────────────────────────
+    function isVisible(el) {
+        const rect = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 &&
+               cs.display !== 'none' && cs.visibility !== 'hidden' &&
+               cs.opacity !== '0';
+    }
+
+    function normText(el) {
+        const raw = (
+            el.getAttribute('data-title') ||
+            el.getAttribute('title') ||
+            el.getAttribute('aria-label') ||
+            (el.querySelector('img') ? el.querySelector('img').getAttribute('alt') : null) ||
+            el.textContent || ''
+        ).trim().replace(/\\s+/g, ' ');
+        return raw.slice(0, 120);
+    }
+
+    function episodeScore(text) {
+        const t = text.trim();
+        let s = 0;
+        if (/^\\d+$/.test(t) && parseInt(t) <= 500)       s += 20; // bare number ≤500 = likely episode
+        if (/\\bep(isode)?[.\\s-]*\\d+/i.test(t))          s += 15;
+        if (/\\bs\\d+\\s*e\\d+/i.test(t))                  s += 15;
+        if (/第\\s*\\d+\\s*[集话]/u.test(t))               s += 15; // CJK "episode N"
+        if (/\\d+/.test(t))                                s += 3;
+        // penalise player-UI labels
+        const ui = ['fullscreen','screenshot','setting','quality','speed',
+                    '全屏','截圖','設置','设置','畫中畫','画中画','上一','下一',
+                    'previous','next','season','playlist','loading'];
+        if (ui.some(w => t.toLowerCase().includes(w)))     s -= 30;
+        return s;
+    }
+
+    function getSelector(el) {
+        const path = [];
+        let node = el;
+        while (node && node !== document.documentElement) {
+            const parent = node.parentElement;
+            if (!parent) break;
+            const idx = Array.from(parent.children).indexOf(node) + 1;
+            path.unshift(node.tagName.toLowerCase() + ':nth-child(' + idx + ')');
+            node = parent;
+        }
+        return path.join(' > ');
+    }
+
+    // ── Strategy 1: explicit episode containers ───────────────────────────────
+    const CONTAINER_SELECTORS = [
+        '[class*="episode"]', '[class*="eps"]', '[class*="playlist"]',
+        '[class*="season"]', '[id*="episode"]', '[id*="playlist"]',
+        '[class*="ep-list"]', '[class*="eplist"]', '[class*="ep_list"]',
+        '[class*="video-list"]', '[class*="server"]',
+        'a[href*="/episode/"]', 'a[href*="/ep/"]', 'a[href*="/e/"]',
+        'a[href*="?ep="]', 'a[href*="?episode="]',
+        '[data-episode]', '[data-ep]',
+    ];
+
+    // ── Strategy 2: dense cluster of numeric sibling links ────────────────────
+    // Find any <a> or <li> whose text is a bare number, then collect the whole
+    // sibling cluster it belongs to (covers sites like movieffm where episodes
+    // are just <a>1</a><a>2</a>... with non-episode class names).
+    function findNumericClusters() {
+        const seeds = Array.from(document.querySelectorAll('a, li, span'))
+            .filter(el => isVisible(el) && /^\\d{1,3}$/.test((el.textContent||'').trim()));
+        const parents = new Set();
+        for (const s of seeds) {
+            if (s.parentElement) parents.add(s.parentElement);
+        }
+        const found = [];
+        for (const parent of parents) {
+            const children = Array.from(parent.children)
+                .filter(c => isVisible(c) && /^\\d{1,3}$/.test((c.textContent||'').trim()));
+            if (children.length >= 3) found.push(...children);
+        }
+        return found;
+    }
+
+    // ── Collect + deduplicate ─────────────────────────────────────────────────
+    const seen = new Map();
+    const results = [];
+
+    function addEl(el) {
+        if (!isVisible(el)) return;
+        const text = normText(el);
+        if (!text) return;
+        const key = text.toLowerCase();
+        if (seen.has(key)) return;
+        const score = episodeScore(text);
+        if (score < 0) return;  // skip penalised UI items
+        seen.set(key, true);
+        results.push({ text, selector: getSelector(el), score });
+    }
+
+    // Run strategy 1
+    for (const sel of CONTAINER_SELECTORS) {
+        let matches;
+        try { matches = Array.from(document.querySelectorAll(sel)); }
+        catch(e) { continue; }
+        matches.forEach(addEl);
+    }
+
+    // Run strategy 2 (numeric clusters)
+    findNumericClusters().forEach(addEl);
+
+    results.sort((a, b) => b.score - a.score || a.text.localeCompare(b.text, undefined, {numeric: true}));
+    return results.slice(0, 60);
+}
+"""
+
 def _dns_ok(host):
     socket.setdefaulttimeout(3)
     try:
@@ -145,7 +262,56 @@ def _dns_ok(host):
     except socket.gaierror:
         return False
 
-def intercept_video_traffic(url, interactive=False):
+def _present_episode_menu(page, console):
+    """
+    Run _JS_DISCOVER_EPISODES in the page, show a numbered Rich table,
+    prompt user to pick one, and Playwright-click it.
+    Returns True on successful click, False on failure/cancel.
+    """
+    from rich.table import Table
+    from rich.prompt import Prompt  # already guaranteed installed by caller
+
+    try:
+        candidates = page.evaluate(_JS_DISCOVER_EPISODES)
+    except Exception as e:
+        console.print(f"[red]Episode discovery failed: {e}[/red]")
+        return False
+
+    if not candidates:
+        console.print("[yellow]No episode elements found. Try --interactive to click manually.[/yellow]")
+        return False
+
+    table = Table(title="Episodes found", show_lines=True)
+    table.add_column("#", style="bold cyan", no_wrap=True)
+    table.add_column("Label", style="white")
+    for i, item in enumerate(candidates, start=1):
+        table.add_row(str(i), item["text"])
+    console.print(table)
+
+    while True:
+        raw = Prompt.ask(
+            "[bold cyan]Episode number[/bold cyan] (or [bold red]q[/bold red] to quit)",
+            console=console,
+        ).strip()
+        if raw.lower() in ("q", "quit", "exit"):
+            return False
+        if raw.isdigit() and 1 <= int(raw) <= len(candidates):
+            chosen = candidates[int(raw) - 1]
+            console.print(f"[green]Selected:[/green] {chosen['text']}")
+            try:
+                page.click(chosen["selector"], timeout=5000)
+            except Exception:
+                # Fallback: JS click (works when Playwright can't reach the element)
+                try:
+                    page.evaluate("(sel) => document.querySelector(sel)?.click()", chosen["selector"])
+                except Exception as e2:
+                    console.print(f"[red]Click failed: {e2}[/red]")
+                    return False
+            return True
+        console.print(f"[yellow]Enter a number between 1 and {len(candidates)}.[/yellow]")
+
+
+def intercept_video_traffic(url, interactive=False, auto=False):
     """
     Launch a headless browser, navigate to URL, and find a playable video stream.
 
@@ -164,6 +330,16 @@ def intercept_video_traffic(url, interactive=False):
     except ImportError:
         print("Error: 'playwright' is not installed. Please install it to use this feature.")
         return None, None, None
+
+    if auto:
+        try:
+            from rich.console import Console as _RichConsole
+            from rich.table import Table as _RichTable
+            from rich.prompt import Prompt as _RichPrompt
+        except ImportError:
+            print("Error: 'rich' is not installed. Run: pip install rich")
+            return None, None, None
+        _console = _RichConsole()
 
     if interactive:
         print(f"Launching browser (interactive mode): {url}")
@@ -223,6 +399,23 @@ def intercept_video_traffic(url, interactive=False):
                     pass  # piped stdin — fall through immediately
                 print("Waiting 2 seconds for pending requests to settle...")
                 page.wait_for_timeout(2000)
+
+            elif auto:
+                page.wait_for_timeout(3000)  # let episode list render
+                clicked = _present_episode_menu(page, _console)
+                if clicked:
+                    _console.print("[dim]Waiting for stream to load...[/dim]")
+                    for _ in range(15):  # poll up to 15 s for m3u8
+                        page.wait_for_timeout(1000)
+                        if req_m3u8:
+                            break
+                else:
+                    # No click — fall back to headless capture of whatever loaded
+                    for i in range(10):
+                        page.wait_for_timeout(1000)
+                        if i >= 4 and req_m3u8:
+                            break
+
             else:
                 # We always wait at least 5s so window vars are populated before JS extraction,
                 # even if a request event fires early (request fires before DNS resolves).
@@ -257,10 +450,10 @@ def intercept_video_traffic(url, interactive=False):
         u.replace("\\/", "/") for u in (js_urls + req_m3u8)
     ))
 
-    if interactive and req_m3u8:
-        # The last m3u8 request = the stream triggered by the user's episode click.
+    if (interactive or auto) and req_m3u8:
+        # The last m3u8 request = the stream triggered by the episode click.
         # Walk backwards through req_m3u8 to find a resolvable host.
-        print(f"Interactive mode: {len(req_m3u8)} m3u8 request(s) captured, "
+        print(f"Auto/interactive mode: {len(req_m3u8)} m3u8 request(s) captured, "
               f"selecting most recent resolvable...")
         for candidate in reversed(req_m3u8):
             candidate = candidate.replace("\\/", "/")
@@ -319,7 +512,17 @@ def main():
             "then press Enter in this terminal to capture that stream."
         )
     )
+    parser.add_argument(
+        "--auto", "-a", action="store_true",
+        help=(
+            "Headless browser with terminal episode selection. "
+            "Scrapes episode links, prompts for a choice, clicks automatically."
+        )
+    )
     args = parser.parse_args()
+
+    if args.interactive and args.auto:
+        parser.error("--interactive and --auto are mutually exclusive.")
 
     if not shutil.which("mpv"):
         sys.exit("Error: 'mpv' is not installed or not on PATH.")
@@ -334,7 +537,9 @@ def main():
 
     # Check method
     use_browser = False
-    if not is_ytdl_supported(url) and (url.startswith("http://") or url.startswith("https://")):
+    if args.auto or args.interactive:
+        use_browser = True
+    elif not is_ytdl_supported(url) and (url.startswith("http://") or url.startswith("https://")):
         print("URL not supported by yt-dlp — falling back to headless browser sniffing.")
         use_browser = True
 
@@ -344,7 +549,7 @@ def main():
 
     if use_browser:
         sniffed_target, browser_cookies, browser_referer = intercept_video_traffic(
-            url, interactive=args.interactive
+            url, interactive=args.interactive, auto=args.auto
         )
         if sniffed_target:
             final_target = sniffed_target
