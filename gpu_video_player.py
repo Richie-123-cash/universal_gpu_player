@@ -98,6 +98,7 @@ _CONTEXT_KWARGS = {
     "viewport": {"width": 1920, "height": 1080},
     "locale": "en-US",
     "timezone_id": "America/New_York",
+    "permissions": [],          # deny geolocation, camera, mic, notifications, clipboard
     "extra_http_headers": {
         "Accept-Language": "en-US,en;q=0.9",
         "Sec-CH-UA-Mobile": "?0",
@@ -113,6 +114,31 @@ Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
 Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
 window.chrome = window.chrome || { runtime: {} };
 """
+
+# Hostnames (or hostname suffixes) to abort before they leave the machine.
+# Exclusively tracker, analytics, ad-network, and known malvertising domains.
+# Video CDNs are never listed here — stream capture is unaffected.
+_BLOCKED_DOMAINS = {
+    # Google ads / analytics
+    "doubleclick.net", "googlesyndication.com", "googletagmanager.com",
+    "googletagservices.com", "google-analytics.com", "googleadservices.com",
+    "adservice.google.com",
+    # Facebook / Meta pixel
+    "facebook.com", "connect.facebook.net",
+    # General analytics
+    "hotjar.com", "mixpanel.com", "amplitude.com", "segment.io", "segment.com",
+    "fullstory.com", "logrocket.com", "mouseflow.com", "crazyegg.com",
+    # Ad networks commonly embedded in streaming sites
+    "adnxs.com", "rubiconproject.com", "pubmatic.com", "openx.net",
+    "casalemedia.com", "criteo.com", "taboola.com", "outbrain.com",
+    "revcontent.com", "sharethrough.com", "triplelift.com",
+    # Malvertising / exploit-kit networks common on streaming sites
+    "trafficjunky.net", "traffichaus.com", "exoclick.com", "juicyads.com",
+    "plugrush.com", "adspyglass.com", "hilltopads.net",
+    # Telemetry / fingerprinting
+    "fingerprintjs.com", "fpjs.io", "px.ads.linkedin.com",
+    "bat.bing.com", "ct.pinterest.com", "clarity.ms",
+}
 
 # JS snippet run inside the browser to extract all m3u8 URLs baked into the page.
 # Uses a split-on-extension approach to avoid regex escape conflicts between Python and JS.
@@ -262,6 +288,18 @@ def _dns_ok(host):
     except socket.gaierror:
         return False
 
+def _should_block(url_str):
+    """Return True if url_str's hostname matches a known tracker/ad domain or subdomain."""
+    try:
+        host = urlparse(url_str).hostname or ""
+    except Exception:
+        return False
+    for blocked in _BLOCKED_DOMAINS:
+        if host == blocked or host.endswith("." + blocked):
+            return True
+    return False
+
+
 def _present_episode_menu(page, console):
     """
     Run _JS_DISCOVER_EPISODES in the page, show a numbered Rich table,
@@ -369,6 +407,29 @@ def intercept_video_traffic(url, interactive=False, auto=False):
         if not _stealth_available:
             context.add_init_script(_STEALTH_INIT_JS)
         page = context.new_page()
+
+        # ── Security hardening ────────────────────────────────────────────────
+        # 1. Abort tracker / ad / malvertising requests before they fire
+        page.route("**/*", lambda route: (
+            route.abort() if _should_block(route.request.url) else route.continue_()
+        ))
+
+        # 2. Close any popup window the page tries to open
+        page.context.on("page", lambda popup: popup.close())
+
+        # 3. Block mid-session navigation hijacks (window.location = "..." redirects)
+        _origin_host = urlparse(url).hostname
+        def _block_hijack(frame):
+            if frame == page.main_frame:
+                nav_host = urlparse(frame.url).hostname
+                if nav_host and nav_host != _origin_host:
+                    print(f"[security] Blocked navigation hijack to: {frame.url}")
+                    try:
+                        page.go_back()
+                    except Exception:
+                        pass
+        page.on("framenavigated", _block_hijack)
+        # ─────────────────────────────────────────────────────────────────────
 
         def handle_request(request):
             req_url = request.url
